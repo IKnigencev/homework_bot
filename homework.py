@@ -1,4 +1,5 @@
 """Основной модуль бота."""
+from http import HTTPStatus
 import os
 import time
 import requests
@@ -26,6 +27,7 @@ PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
+
 RETRY_TIME = 1
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
@@ -41,6 +43,7 @@ HOMEWORK_STATUSES = {
 def send_message(bot, message):
     """Функция отправки сообщений."""
     try:
+        logging.info('Отправка сообщения в чат.')
         bot.send_message(TELEGRAM_CHAT_ID, message)
     except Exception as error:
         logging.error(f'Ошибка при отправке сообщения: {error}')
@@ -50,30 +53,34 @@ def get_api_answer(current_timestamp):
     """Функция запроса к внешнему API."""
     timestamp = current_timestamp or int(time.time())
     params = {'from_date': timestamp}
+    logging.info('Отправка запроса к API.')
     response = requests.get(ENDPOINT, headers=HEADERS, params=params)
-    if response.status_code == 200:
-        return response.json()
-    else:
+    if response.status_code != HTTPStatus.OK:
         raise IncorrectStatusResponse(response)
+    try:
+        return response.json()
+    except Exception as error:
+        logging.error(f'Ответ пришел не в виде json: {error}')
 
 
 def check_response(response: dict) -> dict:
     """Функция проверки результата ответа от API."""
     if isinstance(response, dict):
         try:
-            result = response['homeworks']
-            if not isinstance(result, list):
+            result = response.get('homeworks')
+            if result is None:
+                message = f'Отсутствует ключ в ответе {response}'
+                raise KeyError(message)
+            elif not isinstance(result, list):
                 message = f'Ответ пришел не в виде списка: {type(result)}'
                 raise TypeError(message)
-            else:
-                message = f'Ответ пришел в корректном виде {type(result)}'
-                logging.info(message)
+            message = f'Ответ пришел в корректном виде {type(result)}'
+            logging.info(message)
+            return result
         except TypeError as error:
             logging.error(error)
-        else:
-            return result
-    else:
-        return response
+            raise TypeError(error)
+    return response
 
 
 def parse_status(homework):
@@ -92,15 +99,7 @@ def parse_status(homework):
 
 def check_tokens() -> bool:
     """Проверка необходимых ключей."""
-    checked_token = (
-        PRACTICUM_TOKEN,
-        TELEGRAM_TOKEN,
-        TELEGRAM_CHAT_ID
-    )
-    if None in checked_token:
-        return False
-    else:
-        return True
+    return all([PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID])
 
 
 def main():
@@ -109,11 +108,13 @@ def main():
     current_timestamp = int(time.time())
     status = ''
     error_cache = ''
+    logging.info('Проверка статуса токенов.')
     if not check_tokens():
         logging.critical('Отсутствуют одна или несколько переменных окружения')
         raise Exception('Отсутствуют одна или несколько переменных окружения')
     while True:
         try:
+            logging.info('Запуска основной части main.')
             response = get_api_answer(current_timestamp)
             current_timestamp = response.get('current_date')
             homework = check_response(response)
@@ -121,12 +122,14 @@ def main():
             if message != status:
                 send_message(bot, message)
                 status = message
-            time.sleep(RETRY_TIME)
         except Exception as error:
             message_error = f'Сбой в работе программы: {error}'
+            logging.error(message_error)
             if message_error != error_cache:
                 send_message(bot, message_error)
                 error_cache = message_error
+        else:
+            logging.info('Ожидание сделующего завроса.')
             time.sleep(RETRY_TIME)
 
 
