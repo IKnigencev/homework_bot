@@ -92,14 +92,13 @@ def parse_status(homework):
         message = (f'Изменился статус проверки работы "{homework_name}".'
                    f'{verdict}')
         return message
-    else:
-        message = 'Ошибка при попытке достать ответ из response'
-        raise Exception(message)
+    message = 'Ошибка при попытке достать ответ из response'
+    raise Exception(message)
 
 
 def check_tokens() -> bool:
     """Проверка необходимых ключей."""
-    return all([PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID])
+    return all((PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID))
 
 
 def main():
